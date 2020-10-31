@@ -31,6 +31,8 @@ Let's assume you're solving the problem [Hello World!](https://open.kattis.com/p
 
 **Note:** If you get an error message like this: `ModuleNotFoundError: No module named 'requests'` when you run `kattis` it's because the module 'requests' isn't installed. To install the module, check out [this](https://stackoverflow.com/a/17309309/4132739) StackOverflow answer.
 
+![Alt Text](https://i.gyazo.com/e46048254b6b1bdd79873a9433decc5b.gif)
+
 # More advanced options
 
 The submit client can handle multiple files in a submission. For such submissions, the filename and suffix of the first file listed on the command line is the basis of the guesses. It is ok to list a file multiple times, e.g., `kattis Hello.java *.java` will work as intended.
