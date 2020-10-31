@@ -5,9 +5,11 @@ import os
 import re
 import sys
 import webbrowser
+import json
 
 import requests
 import requests.exceptions
+import time
 
 # Python 2/3 compatibility
 if sys.version_info[0] >= 3:
@@ -155,7 +157,6 @@ def guess_mainclass(language, files):
         return name
     return None
 
-
 def login(login_url, username, password=None, token=None):
     """Log in to Kattis.
 
@@ -197,6 +198,8 @@ Please download a new .kattisrc file''')
     loginurl = get_url(cfg, 'loginurl', 'login')
     return login(loginurl, username, password, token)
 
+def getSubmissionPage(url, cookies):
+    return requests.get(url, data=data, files=sub_files, cookies=cookies, headers=_HEADERS)
 
 def submit(submit_url, cookies, problem, language, files, mainclass='', tag=''):
     """Make a submission.
@@ -223,8 +226,31 @@ def submit(submit_url, cookies, problem, language, files, mainclass='', tag=''):
                                sub_file.read(),
                                'application/octet-stream')))
 
+    # req = requests.Request('POST', submit_url, data=data, files=sub_files, cookies=cookies, headers=_HEADERS)
+    # prepared = req.prepare()
+    # print(prepared)
+    # pretty_print_POST(prepared)
+    # response = requests.Session().send(prepared)
+    # print(response.request.headers)
+    # print(response.request.body)
+    # return response
     return requests.post(submit_url, data=data, files=sub_files, cookies=cookies, headers=_HEADERS)
 
+# def pretty_print_POST(req):
+#     """
+#     At this point it is completely built and ready
+#     to be fired; it is "prepared".
+
+#     However pay attention at the formatting used in 
+#     this function because it is programmed to be pretty 
+#     printed and may differ from the actual request.
+#     """
+#     print('{}\n{}\r\n{}\r\n\r\n{}'.format(
+#         '-----------START-----------',
+#         req.method + ' ' + req.url,
+#         '\r\n'.join('{}: {}'.format(k, v) for k, v in req.headers.items()),
+#         req.body,
+#     ))
 
 def confirm_or_die(problem, language, files, mainclass, tag):
     print('Problem:', problem)
@@ -353,13 +379,101 @@ extension "%s"''' % (ext,))
         sys.exit(1)
 
     plain_result = result.content.decode('utf-8').replace('<br />', '\n')
-    print(plain_result)
+
+    submissions_url = get_url(cfg, 'submissionsurl', 'submissions')
+    login_reply_2 = login_from_config(cfg)
+
+    m = re.search(r'Submission ID: (\d+)', plain_result)
+    if m:
+        submission_id = m.group(1)
+        status_url = '%s/%s?json' % (submissions_url, submission_id)
+        session_cookie = login_reply_2.cookies.get("EduSiteCookie")
+        if session_cookie:
+            # print('EduSiteCookie='+session_cookie)
+            status_post_headers = {'User-Agent': 'kattis-cli-submit', 'Cookie': 'EduSiteCookie='+session_cookie}
+
+            status_reply = requests.post(status_url, headers=status_post_headers)
+            status = json.loads(status_reply.content)
+
+            status_id = status["status_id"]
+
+            # print(status)
+
+            l = 100
+            printProgressBar(0, l, prefix = getSubmissionMessage(status_id)+':', suffix = str(0) + ' testcases checked', length = 50)
+
+            while status_id == 0 or status_id == 5:
+                status_reply = requests.post(status_url, headers=status_post_headers)
+                status = json.loads(status_reply.content)
+                status_id = status["status_id"]
+                testcase_index = status["testcase_index"]
+
+                m = re.search(r'title=\"Test case 1\/(\d+):', str(status["row_html"]))
+                if m:
+                    num_of_testcases = m.group(1)
+                    l = int(num_of_testcases)
+                    printProgressBar(
+                        testcase_index,
+                        l,
+                        prefix = getSubmissionMessage(status_id)+':',
+                        suffix = 'testcases checked',
+                        num_of_testcases = str(num_of_testcases),
+                        length = int(num_of_testcases)
+                    )
+                else:
+                    printProgressBar(
+                        testcase_index,
+                        l,
+                        prefix = getSubmissionMessage(status_id)+':',
+                        suffix = 'testcases checked',
+                    )
+
+                time.sleep(0.5)
 
     try:
         open_submission(plain_result, cfg)
+
     except configparser.NoOptionError:
         pass
 
+# Print iterations progress
+def printProgressBar (iteration, total, prefix = '', suffix = '', num_of_testcases = 'unknown amount', decimals = 1, length = 20, fill = '█', printEnd = "                                        \r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {iteration} of {num_of_testcases} {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
 
+def getSubmissionMessage(status_id):
+    if status_id == 0:
+        return "New"
+    elif status_id == 5:
+        return "Running"
+    elif status_id == 8:
+        return "Compile Error"
+    elif status_id == 9:
+        return "Runtime Error"
+    elif status_id == 12:
+        return "Time Limit Exceeded"
+    elif status_id == 14:
+        return "Wrong Answer"
+    elif status_id == 16:
+        return "Accepted"
+    else:
+        return "Status id unknown" + status_id
+    
 if __name__ == '__main__':
     main()
